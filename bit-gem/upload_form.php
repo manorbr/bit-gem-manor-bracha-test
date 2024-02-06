@@ -88,13 +88,19 @@
     </div>
     
     <script>
+        // Function to calculate SHA-256 checksum of a given ArrayBuffer using the SubtleCrypto API.
         async function calculateSHA256Checksum(arrayBuffer) {
+            // Generate SHA-256 hash of the ArrayBuffer.
             const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            // Convert hash to an array of bytes.
             const hashArray = Array.from(new Uint8Array(hashBuffer));
+            // Convert each byte to a hexadecimal string and join them to form the complete hash.
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
-
+        
+    // Functin to handle the file upload process.
         function uploadFile() {
+            // DOM elements involved in the upload process.
             const fileInput = document.getElementById('fileInput');
             const uploadButton = document.getElementById('uploadButton');
             const statusMessage = document.getElementById('statusMessage');
@@ -102,11 +108,13 @@
             const totalProgressBar = document.getElementById('totalProgressBar');
             const imageDisplay = document.getElementById('imageDisplay');
             const colorDisplay = document.getElementById('colorDisplay');
-
+            
+            // Reset display elements for image and colors.
             imageDisplay.src = '';
             imageDisplay.style.display = 'none';
             colorDisplay.innerHTML = '';
-
+            
+            // Check if a file was selected.
             if (!fileInput.files.length) {
                 statusMessage.innerText = 'Please select image to upload.';
                 return;
@@ -117,27 +125,31 @@
             let offset = 0;
             const totalChunks = Math.ceil(file.size / chunkSize);
             uploadButton.disabled = true;
-
+            
+           // Function to update the progress of uploading individual chunks.
             function updateChunkProgress(chunkNumber) {
                 const chunkProgressPercent = Math.round((chunkNumber / totalChunks) * 100);
                 chunkProgressBar.style.width = chunkProgressPercent + '%';
                 chunkProgressBar.innerText = `Chunk Progress: ${chunkProgressPercent}%`;
             }
 
+            // Function to update the overall file upload progress.
             function updateTotalProgress(bytesUploaded) {
                 const totalProgressPercent = Math.min(100, Math.round((bytesUploaded / file.size) * 100));
                 totalProgressBar.style.width = totalProgressPercent + '%';
                 totalProgressBar.innerText = `Total Progress: ${totalProgressPercent}%`;
             }
 
+            // Function to upload a single chunk.
             async function uploadChunk(chunk, chunkNumber) {
                 const reader = new FileReader();
                 reader.onload = async function(event) {
                     const arrayBuffer = event.target.result;
-                    
-                    // Calculate SHA256 checksum using SubtleCrypto
+
+                    // Calculate the checksum for the chunk.
                     const chunkChecksum = await calculateSHA256Checksum(arrayBuffer);
                     
+                    // Prepare the data for POST request.
                     const formData = new FormData();
                     formData.append('file', new Blob([arrayBuffer]), file.name);
                     formData.append('chunkNumber', chunkNumber);
@@ -146,6 +158,7 @@
                     formData.append('totalChunks', totalChunks);
 
                     try {
+                         // Perform the POST request to upload the chunk.
                         const response = await fetch('upload.php', {
                             method: 'POST',
                             body: formData,
@@ -154,16 +167,20 @@
                         if (!response.ok) {
                             throw new Error('Network response was not ok');
                         }
-
+                        
+                        // Handle the final chunk differently to process the response (e.g., displaying uploaded image colors).
                         if (offset + chunkSize >= file.size) {
                             const responseJson = await response.json();
                             console.log(responseJson.message); // CHUNK UPLOAD STATUS TO CONSOLE LOG
+
+                            // If colors were returned in the response, display the image and its colors.
                             if (responseJson.colors) {
                                 imageDisplay.src = URL.createObjectURL(file);
                                 imageDisplay.style.display = 'block';
 
                                 colorDisplay.innerHTML = '';
                                 responseJson.colors.forEach(colorInfo => {
+                                    // Create and display a div for each color.
                                     const hex = colorInfo.color;
                                     const r = parseInt(hex.slice(1, 3), 16);
                                     const g = parseInt(hex.slice(3, 5), 16);
@@ -177,46 +194,47 @@
                                     colorDisplay.appendChild(colorDiv);
                                 });
                             }
-                        } else {
-                            const textResponse = await response.text();
+                        } else { // For non-final chunks, just log the text response.
+                            const textResponse = await response.text(); 
                             console.log(textResponse); // CHUNK UPLOAD STATUS TO CONSOLE LOG with text
                         }
-
+                        // Update progress and prepare for the next chunk if any.
                         updateTotalProgress(offset + chunkSize);
                         offset += chunkSize;
                         if (offset < file.size) {
                             loadNextChunk();
-                        } else {
+                        } else {  // enable upload button and send complete message.
                             uploadButton.disabled = false;
                             statusMessage.innerText = 'Upload complete.';
                         }
-                    } catch (error) {
+                    } catch (error) { // Handle errors
                         console.error('Error:', error);
                         uploadButton.disabled = false;
                         statusMessage.innerText = 'Error uploading file: ' + error.message;
                     }
                 };
-                reader.onerror = function(error) {
+                reader.onerror = function(error) { // Handle file reading errors.
                     console.error('Error reading file:', error);
                     uploadButton.disabled = false;
                     statusMessage.innerText = 'Error reading file: ' + error.message;
                 };
-                reader.readAsArrayBuffer(chunk);
-                updateChunkProgress(chunkNumber);
+                reader.readAsArrayBuffer(chunk); // Read the chunk as ArrayBuffer to calculate checksum and upload.
+                updateChunkProgress(chunkNumber); // Update UI for chunk progress.
             }
 
             function loadNextChunk() {
-                const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
-                uploadChunk(chunk, Math.ceil(offset / chunkSize) + 1);
+                const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size)); // Slice the next chunk
+                uploadChunk(chunk, Math.ceil(offset / chunkSize) + 1); // Calculate chunk number and upload it
             }
-
+            
+            // starting point for UI for new upload.
             statusMessage.innerText = '';
             totalProgressBar.style.width = '0%';
             totalProgressBar.innerText = 'Total Progress: 0%';
             chunkProgressBar.style.width = '0%';
             chunkProgressBar.innerText = 'Chunk Progress: 0%';
 
-            loadNextChunk();
+            loadNextChunk(); // Start the upload process with the first chunk.
         }
     </script>
 </body>
