@@ -11,7 +11,7 @@ function sanitizeFileName($fileName) { // SECURITY
     return preg_replace('/[^a-zA-Z0-9._-]/', '_', $fileName);
 }
 
-if (!isset($_FILES['file']['error']) || is_array($_FILES['file']['error'])) {
+if (!isset($_FILES['file']['error']) || is_array($_FILES['file']['error'])) { // Check for errors with file
     die(json_encode(['error' => 'Invalid parameters.']));
 }
 
@@ -19,40 +19,40 @@ if ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
     die(json_encode(['error' => 'File upload error: ' . $_FILES['file']['error']]));
 }
 
-if (!isset($_POST['fileName']) || empty($_POST['fileName'])) {
+if (!isset($_POST['fileName']) || empty($_POST['fileName'])) { // Check for problems with file name
     die(json_encode(['error' => 'File name not provided.']));
 }
 $fileName = sanitizeFileName($_POST['fileName']);
 
-if (!isset($_POST['chunkNumber']) || !is_numeric($_POST['chunkNumber'])) {
+if (!isset($_POST['chunkNumber']) || !is_numeric($_POST['chunkNumber'])) { // verify chunk
     die(json_encode(['error' => 'Invalid or missing chunk number.']));
 }
 $chunkNumber = (int)$_POST['chunkNumber'];
 
-if (!isset($_POST['checksum'])) {
+if (!isset($_POST['checksum'])) { // verify chunk
     die(json_encode(['error' => 'Checksum not provided.']));
 }
 $checksum = $_POST['checksum'];
 
-$filePath = $targetDir . $fileName . '.part' . $chunkNumber;
+$filePath = $targetDir . $fileName . '.part' . $chunkNumber; // make file path
 
 if (!move_uploaded_file($_FILES['file']['tmp_name'], $filePath)) {
     die(json_encode(['error' => 'Failed to move uploaded file.']));
 }
 
-$calculatedChecksum = hash_file('sha256', $filePath);
+$calculatedChecksum = hash_file('sha256', $filePath); // verify checksum 
 if ($checksum !== $calculatedChecksum) {
     unlink($filePath);
     die(json_encode(['error' => 'Checksum verification failed.']));
 }
 
 $totalChunks = isset($_POST['totalChunks']) ? (int)$_POST['totalChunks'] : null;
-if ($totalChunks === null) {
+if ($totalChunks === null) { // another check fo total chunks size 
     die(json_encode(['error' => 'Total chunks count not provided.']));
 }
 
 $allChunksUploaded = true;
-for ($i = 1; $i <= $totalChunks; $i++) {
+for ($i = 1; $i <= $totalChunks; $i++) { // Making sure making all parts 
     if (!file_exists($targetDir . $fileName . '.part' . $i)) {
         $allChunksUploaded = false;
         break;
@@ -61,11 +61,11 @@ for ($i = 1; $i <= $totalChunks; $i++) {
 
 if ($allChunksUploaded) {
     $finalFilePath = $targetDir . $fileName;
-    if (!$out = @fopen($finalFilePath, "wb")) {
+    if (!$out = @fopen($finalFilePath, "wb")) { // Check if can open final image for starting analysis 
         die(json_encode(['error' => 'Failed to open final file for writing.']));
     }
 
-    for ($i = 1; $i <= $totalChunks; $i++) {
+    for ($i = 1; $i <= $totalChunks; $i++) { // try to assembly parts
         $partFilePath = $targetDir . $fileName . '.part' . $i;
         if (!$in = @fopen($partFilePath, "rb")) {
             die(json_encode(['error' => 'Failed to open chunk ' . $i . ' for reading.']));
@@ -93,9 +93,9 @@ if ($allChunksUploaded) {
 }
 
 
-function analyzeImageColors($filePath) { // CHECK IF IMAGE
+function analyzeImageColors($filePath) { // function to analyze image colors
     $imageInfo = getimagesize($filePath);
-    switch ($imageInfo['mime']) {
+    switch ($imageInfo['mime']) { // CHECK IF IMAGE
         case 'image/jpeg':
             $image = imagecreatefromjpeg($filePath);
             break;
@@ -109,15 +109,15 @@ function analyzeImageColors($filePath) { // CHECK IF IMAGE
             return []; // Unsupported image type
     }
 
-    $width = imagesx($image);
-    $height = imagesy($image);
+    $width = imagesx($image); // Get image width
+    $height = imagesy($image); // Get image height
     $colorFrequency = [];
 
     $dynamicSampleSize = sqrt($width * $height) / 250; // Dynamic sample size for diffrnect image sizes
-    $xStep = max(1, round($width / $dynamicSampleSize));
+    $xStep = max(1, round($width / $dynamicSampleSize)); // max - verify value is at least 1. round - make sure its a round number. determines how many pixels to skip.
     $yStep = max(1, round($height / $dynamicSampleSize));
 
-    for ($x = 0; $x < $width; $x += $xStep) {
+    for ($x = 0; $x < $width; $x += $xStep) { // calculate the frequency of each color present 
         for ($y = 0; $y < $height; $y += $yStep) {
             $rgb = imagecolorat($image, $x, $y);
             $colors = imagecolorsforindex($image, $rgb);
@@ -127,15 +127,14 @@ function analyzeImageColors($filePath) { // CHECK IF IMAGE
     }
 
     // Advanced color clustering - verify not using same color tones.
-    
     $clusters = clusterColors($colorFrequency, sqrt($width * $height)/40);
 
-    arsort($clusters);
+    arsort($clusters); // sort by %
     $dominantColors = array_slice($clusters, 0, 5, true);
     $total = array_sum(array_column($dominantColors, 'count'));
 
     $results = [];
-    foreach ($dominantColors as $color => $data) {
+    foreach ($dominantColors as $color => $data) { // getting most popular from dominantcolors
         $percentage = ($data['count'] / $total) * 100;
         $hexColor = sprintf("#%02x%02x%02x", $data['color']['r'], $data['color']['g'], $data['color']['b']);
         $results[] = ['color' => $hexColor, 'percentage' => round($percentage, 2)];
